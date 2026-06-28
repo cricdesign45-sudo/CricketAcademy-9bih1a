@@ -38,6 +38,13 @@ export default function PlayerLayout() {
       <Tabs.Screen name="performance" options={{ title: 'Report', tabBarIcon: ({ color, size }) => <MaterialIcons name="assessment" size={size} color={color} /> }} />
       <Tabs.Screen name="leaderboard" options={{ title: 'Rankings', tabBarIcon: ({ color, size }) => <MaterialIcons name="emoji-events" size={size} color={color} /> }} />
       <Tabs.Screen name="ai-chat" options={{ title: 'AI Coach', tabBarIcon: ({ color, size }) => <MaterialIcons name="auto-awesome" size={size} color={color} /> }} />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          tabBarIcon: ({ color, size }) => <MaterialIcons name="chat" size={size} color={color} />,
+        }}
+      />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: ({ color, size }) => <MaterialIcons name="person" size={size} color={color} /> }} />
     </Tabs>
   );

@@ -6,6 +6,7 @@ import { PlayersProvider } from '@/contexts/PlayersContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { AppConfigProvider } from '@/contexts/AppConfigContext';
+import { ChatProvider } from '@/contexts/ChatContext';
 
 export default function RootLayout() {
   return (
@@ -16,6 +17,7 @@ export default function RootLayout() {
             <AuthProvider>
               <PlayersProvider>
                 <NotificationProvider>
+                  <ChatProvider>
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="index" />
                     <Stack.Screen name="login" />
@@ -32,7 +34,9 @@ export default function RootLayout() {
                     <Stack.Screen name="hall-of-fame" options={{ headerShown: true, title: 'Hall of Fame', headerStyle: { backgroundColor: '#FFFFFF' }, headerTintColor: '#111827', headerShadowVisible: false }} />
                     <Stack.Screen name="certificate" options={{ headerShown: true, title: 'Certificates', headerStyle: { backgroundColor: '#FFFFFF' }, headerTintColor: '#111827', headerShadowVisible: false }} />
                     <Stack.Screen name="player-id-card" options={{ headerShown: true, title: 'Player ID Cards', headerStyle: { backgroundColor: '#FFFFFF' }, headerTintColor: '#111827', headerShadowVisible: false }} />
+                    <Stack.Screen name="chat-conversation" options={{ headerShown: false }} />
                   </Stack>
+                  </ChatProvider>
                 </NotificationProvider>
               </PlayersProvider>
             </AuthProvider>
