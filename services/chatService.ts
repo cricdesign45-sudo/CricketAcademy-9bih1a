@@ -19,6 +19,8 @@ export interface ChatMessage {
   conversationId: string;
   senderId: string;
   content: string;
+  messageType: 'text' | 'image';
+  mediaUrl: string | null;
   status: 'sending' | 'sent' | 'delivered' | 'read';
   createdAt: string;
 }
@@ -120,17 +122,31 @@ function rowToConversation(r: any): ChatConversation {
 
 // ─── Messages ─────────────────────────────────────────────────────────────────
 
+export async function uploadChatImage(base64Data: string, senderId: string, mimeType = 'image/jpeg'): Promise<string | null> {
+  const ext = mimeType === 'image/png' ? 'png' : 'jpg';
+  const path = `${senderId}/${Date.now()}.${ext}`;
+  const buffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+  const { data, error } = await supabase.storage
+    .from('chat-images')
+    .upload(path, buffer, { contentType: mimeType, upsert: false });
+  if (error || !data) return null;
+  const { data: urlData } = supabase.storage.from('chat-images').getPublicUrl(data.path);
+  return urlData?.publicUrl ?? null;
+}
+
 export async function sendMessage(
   conversationId: string,
   senderId: string,
   content: string,
   receiverId: string,
-  amPlayer1: boolean
+  amPlayer1: boolean,
+  messageType: 'text' | 'image' = 'text',
+  mediaUrl?: string | null
 ): Promise<ChatMessage | null> {
   // Insert message
   const { data: msg, error } = await supabase
     .from('chat_messages')
-    .insert({ conversation_id: conversationId, sender_id: senderId, content, status: 'sent' })
+    .insert({ conversation_id: conversationId, sender_id: senderId, content, status: 'sent', message_type: messageType, media_url: mediaUrl ?? null })
     .select()
     .single();
 
@@ -204,6 +220,8 @@ function rowToMessage(r: any): ChatMessage {
     conversationId: r.conversation_id,
     senderId: r.sender_id,
     content: r.content,
+    messageType: r.message_type ?? 'text',
+    mediaUrl: r.media_url ?? null,
     status: r.status ?? 'sent',
     createdAt: r.created_at,
   };

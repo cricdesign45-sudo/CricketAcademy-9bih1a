@@ -27,7 +27,7 @@ interface ChatContextType {
 
   openConversation: (otherId: string) => Promise<string | null>;
   closeConversation: () => void;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, messageType?: 'text' | 'image', mediaUrl?: string | null) => Promise<void>;
   loadMoreMessages: () => Promise<void>;
   setTyping: (typing: boolean) => void;
   refreshConversations: () => Promise<void>;
@@ -191,8 +191,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [otherPlayerId, activeConversationId]);
 
   // ── Send message ──────────────────────────────────────────────────────────
-  const sendMessage = useCallback(async (content: string) => {
-    if (!activeConversationId || !myId || !content.trim()) return;
+  const sendMessage = useCallback(async (content: string, messageType: 'text' | 'image' = 'text', mediaUrl?: string | null) => {
+    if (!activeConversationId || !myId) return;
+    if (messageType === 'text' && !content.trim()) return;
 
     const conv = conversations.find(c => c.id === activeConversationId) ||
       await getOrCreateConversation(myId, otherPlayerId ?? '');
@@ -208,16 +209,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       conversationId: activeConversationId,
       senderId: myId,
       content: content.trim(),
+      messageType,
+      mediaUrl: mediaUrl ?? null,
       status: 'sending',
       createdAt: new Date().toISOString(),
     };
     setMessages(prev => [...prev, optimistic]);
 
-    const sent = await dbSend(activeConversationId, myId, content.trim(), otherId, amP1);
+    const sent = await dbSend(activeConversationId, myId, content.trim(), otherId, amP1, messageType, mediaUrl);
     if (sent) {
       setMessages(prev => prev.map(m => m.id === tempId ? sent : m));
       lastMessageTime.current = sent.createdAt;
-      // Refresh conversations to update preview
       refreshConversations();
     } else {
       setMessages(prev => prev.filter(m => m.id !== tempId));

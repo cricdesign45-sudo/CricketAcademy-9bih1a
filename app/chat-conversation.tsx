@@ -4,23 +4,27 @@ import React, {
 import {
   View, Text, StyleSheet, FlatList, TextInput,
   TouchableOpacity, KeyboardAvoidingView, Platform,
-  ActivityIndicator, Keyboard,
+  ActivityIndicator, Alert, Dimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '@/hooks/useAuth';
 import { usePlayers } from '@/hooks/usePlayers';
 import { useChat } from '@/contexts/ChatContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Typography, Spacing, Radius } from '@/constants/theme';
-import { ChatMessage } from '@/services/chatService';
+import { ChatMessage, uploadChatImage } from '@/services/chatService';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+const IMG_BUBBLE_W = Math.min(SCREEN_W * 0.62, 240);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatMsgTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDayLabel(iso: string) {
@@ -34,16 +38,15 @@ function formatDayLabel(iso: string) {
 
 function formatLastSeen(iso: string) {
   const d = new Date(iso);
-  const now = new Date();
-  const diff = (now.getTime() - d.getTime()) / 1000;
+  const diff = (Date.now() - d.getTime()) / 1000;
   if (diff < 60) return 'Last seen just now';
   if (diff < 3600) return `Last seen ${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `Last seen at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   return `Last seen ${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
 }
 
-// Status tick icon
-function StatusIcon({ status, color }: { status: ChatMessage['status']; color: string }) {
+function StatusIcon({ status, isMe }: { status: ChatMessage['status']; isMe: boolean }) {
+  const color = isMe ? 'rgba(255,255,255,0.65)' : '#9CA3AF';
   if (status === 'sending') return <MaterialIcons name="schedule" size={11} color={color} />;
   if (status === 'sent') return <MaterialIcons name="check" size={11} color={color} />;
   if (status === 'delivered') return <MaterialIcons name="done-all" size={11} color={color} />;
@@ -51,20 +54,74 @@ function StatusIcon({ status, color }: { status: ChatMessage['status']; color: s
   return null;
 }
 
-// Typing bubble
 function TypingBubble({ C }: { C: any }) {
   return (
-    <View style={[tb.wrap, { backgroundColor: C.bgSurface }]}>
-      <View style={tb.dot} />
-      <View style={[tb.dot, { opacity: 0.6 }]} />
-      <View style={[tb.dot, { opacity: 0.3 }]} />
+    <View style={[tb.wrap, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+      <View style={[tb.dot, { backgroundColor: C.textMuted }]} />
+      <View style={[tb.dot, { backgroundColor: C.textMuted, opacity: 0.6 }]} />
+      <View style={[tb.dot, { backgroundColor: C.textMuted, opacity: 0.3 }]} />
     </View>
   );
 }
 const tb = StyleSheet.create({
-  wrap: { flexDirection: 'row', gap: 4, padding: 10, borderRadius: 16, alignSelf: 'flex-start', marginLeft: Spacing.base, marginBottom: Spacing.sm },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#9CA3AF' },
+  wrap: {
+    flexDirection: 'row', gap: 4, padding: 12, borderRadius: 18,
+    alignSelf: 'flex-start', marginLeft: Spacing.base, marginBottom: 6,
+    borderWidth: 1,
+  },
+  dot: { width: 7, height: 7, borderRadius: 4 },
 });
+
+// ─── Image Bubble ─────────────────────────────────────────────────────────────
+
+function ImageBubble({
+  msg, isMe, C, otherName, otherColor,
+}: {
+  msg: ChatMessage; isMe: boolean; C: any; otherName: string; otherColor: string;
+}) {
+  const [imgError, setImgError] = useState(false);
+
+  return (
+    <View style={[st.msgRow, isMe && st.msgRowMe]}>
+      {!isMe ? (
+        <View style={[st.avatarSm, { backgroundColor: otherColor + '20' }]}>
+          <Text style={[st.avatarSmTxt, { color: otherColor }]}>{otherName[0]?.toUpperCase()}</Text>
+        </View>
+      ) : null}
+      <View style={[
+        st.imgBubble,
+        isMe
+          ? { backgroundColor: C.primary, borderBottomRightRadius: 4 }
+          : { backgroundColor: C.bgCard, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: C.border },
+      ]}>
+        {msg.status === 'sending' && !msg.mediaUrl ? (
+          <View style={[st.imgPlaceholder, { backgroundColor: isMe ? C.primaryDark + '40' : C.bgSurface }]}>
+            <ActivityIndicator size="small" color={isMe ? '#fff' : C.primary} />
+            <Text style={{ color: isMe ? 'rgba(255,255,255,0.7)' : C.textMuted, fontSize: 11, marginTop: 4 }}>Uploading…</Text>
+          </View>
+        ) : imgError ? (
+          <View style={[st.imgPlaceholder, { backgroundColor: C.bgSurface }]}>
+            <MaterialIcons name="broken-image" size={28} color={C.textMuted} />
+          </View>
+        ) : (
+          <Image
+            source={{ uri: msg.mediaUrl ?? '' }}
+            style={st.imgContent}
+            contentFit="cover"
+            transition={200}
+            onError={() => setImgError(true)}
+          />
+        )}
+        <View style={[st.imgMeta, isMe ? { justifyContent: 'flex-end' } : { justifyContent: 'flex-start' }]}>
+          <Text style={[st.bubbleTime, { color: isMe ? 'rgba(255,255,255,0.6)' : C.textMuted }]}>
+            {msg.createdAt ? formatMsgTime(msg.createdAt) : ''}
+          </Text>
+          {isMe ? <StatusIcon status={msg.status} isMe={isMe} /> : null}
+        </View>
+      </View>
+    </View>
+  );
+}
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
@@ -87,11 +144,11 @@ export default function ChatConversationScreen() {
 
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const listRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const isInitialized = useRef(false);
 
-  // Open conversation on mount if not already open
   useEffect(() => {
     if (!isInitialized.current && otherId) {
       isInitialized.current = true;
@@ -100,32 +157,109 @@ export default function ChatConversationScreen() {
     return () => { closeConversation(); };
   }, [otherId]);
 
-  // Scroll to bottom when new messages arrive
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [messages.length]);
 
+  // ── Send text ──────────────────────────────────────────────────────────────
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text || sending) return;
     setInputText('');
     setSending(true);
     setTyping(false);
-    await sendMessage(text);
+    await sendMessage(text, 'text', null);
     setSending(false);
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
   }, [inputText, sending, sendMessage, setTyping]);
+
+  // ── Pick & send image ──────────────────────────────────────────────────────
+  const handlePickImage = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission Required', 'Please allow access to your photo library.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.75,
+      base64: true,
+      allowsEditing: true,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      Alert.alert('Error', 'Could not read the selected image.');
+      return;
+    }
+
+    setUploadingImage(true);
+
+    // Optimistically show uploading bubble
+    await sendMessage('[Image]', 'image', null);
+
+    const mimeType = asset.mimeType ?? 'image/jpeg';
+    const url = await uploadChatImage(asset.base64, myId, mimeType);
+    setUploadingImage(false);
+
+    if (!url) {
+      Alert.alert('Upload Failed', 'Could not upload image. Please try again.');
+      return;
+    }
+
+    // Send actual image message with URL
+    await sendMessage('[Image]', 'image', url);
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+  }, [myId, sendMessage]);
+
+  // ── Camera ────────────────────────────────────────────────────────────────
+  const handleCamera = useCallback(async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission Required', 'Please allow camera access.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.75,
+      base64: true,
+      allowsEditing: true,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    if (!asset.base64) return;
+
+    setUploadingImage(true);
+    const url = await uploadChatImage(asset.base64, myId, asset.mimeType ?? 'image/jpeg');
+    setUploadingImage(false);
+
+    if (!url) {
+      Alert.alert('Upload Failed', 'Could not upload photo. Please try again.');
+      return;
+    }
+    await sendMessage('[Photo]', 'image', url);
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+  }, [myId, sendMessage]);
 
   const handleChangeText = useCallback((t: string) => {
     setInputText(t);
     if (t.length > 0) setTyping(true);
   }, [setTyping]);
 
-  // Group messages by day
+  // ── Group messages by day ──────────────────────────────────────────────────
   const groupedMessages = useMemo(() => {
-    const items: ({ type: 'day'; label: string; key: string } | { type: 'msg'; msg: ChatMessage; key: string })[] = [];
+    const items: ({
+      type: 'day'; label: string; key: string;
+    } | {
+      type: 'msg'; msg: ChatMessage; key: string;
+    })[] = [];
     let lastDay = '';
     messages.forEach(msg => {
       const day = new Date(msg.createdAt).toDateString();
@@ -135,7 +269,17 @@ export default function ChatConversationScreen() {
       }
       items.push({ type: 'msg', msg, key: msg.id });
     });
-    if (isTyping) items.push({ type: 'msg', msg: { id: 'typing', conversationId: '', senderId: otherId, content: '', status: 'sent', createdAt: '' }, key: 'typing-bubble' });
+    if (isTyping) {
+      items.push({
+        type: 'msg',
+        msg: {
+          id: 'typing', conversationId: '', senderId: otherId,
+          content: '', messageType: 'text', mediaUrl: null,
+          status: 'sent', createdAt: '',
+        },
+        key: 'typing-bubble',
+      });
+    }
     return items;
   }, [messages, isTyping, otherId]);
 
@@ -154,7 +298,6 @@ export default function ChatConversationScreen() {
     <KeyboardAvoidingView
       style={[st.root, { backgroundColor: C.bgDark }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
     >
       {/* ── Header ── */}
       <View style={[st.header, { paddingTop: insets.top + 8, backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
@@ -162,7 +305,6 @@ export default function ChatConversationScreen() {
           <MaterialIcons name="arrow-back" size={22} color={C.textPrimary} />
         </TouchableOpacity>
 
-        {/* Avatar */}
         <View style={[st.headerAvatar, { backgroundColor: otherColor + '20' }]}>
           <Text style={[st.headerAvatarTxt, { color: otherColor }]}>{otherName[0]?.toUpperCase()}</Text>
           {otherPresence?.isOnline ? (
@@ -206,7 +348,9 @@ export default function ChatConversationScreen() {
           showsVerticalScrollIndicator={false}
           onStartReached={loadMoreMessages}
           onStartReachedThreshold={0.2}
-          ListHeaderComponent={loadingMore ? <ActivityIndicator color={C.primary} style={{ marginVertical: 8 }} /> : null}
+          ListHeaderComponent={loadingMore
+            ? <ActivityIndicator color={C.primary} style={{ marginVertical: 8 }} />
+            : null}
           renderItem={({ item }) => {
             if (item.type === 'day') {
               return (
@@ -219,12 +363,24 @@ export default function ChatConversationScreen() {
             }
 
             const msg = item.msg;
-
-            // Typing bubble
             if (msg.id === 'typing') return <TypingBubble C={C} />;
 
             const isMe = msg.senderId === myId;
 
+            // ── Image bubble ─────────────────────────────────────────────────
+            if (msg.messageType === 'image') {
+              return (
+                <ImageBubble
+                  msg={msg}
+                  isMe={isMe}
+                  C={C}
+                  otherName={otherName}
+                  otherColor={otherColor}
+                />
+              );
+            }
+
+            // ── Text bubble ──────────────────────────────────────────────────
             return (
               <View style={[st.msgRow, isMe && st.msgRowMe]}>
                 {!isMe ? (
@@ -232,7 +388,6 @@ export default function ChatConversationScreen() {
                     <Text style={[st.avatarSmTxt, { color: otherColor }]}>{otherName[0]?.toUpperCase()}</Text>
                   </View>
                 ) : null}
-
                 <View style={[
                   st.bubble,
                   isMe
@@ -246,7 +401,7 @@ export default function ChatConversationScreen() {
                     <Text style={[st.bubbleTime, { color: isMe ? 'rgba(255,255,255,0.6)' : C.textMuted }]}>
                       {msg.createdAt ? formatMsgTime(msg.createdAt) : ''}
                     </Text>
-                    {isMe ? <StatusIcon status={msg.status} color={isMe ? 'rgba(255,255,255,0.7)' : C.textMuted} /> : null}
+                    {isMe ? <StatusIcon status={msg.status} isMe={isMe} /> : null}
                   </View>
                 </View>
               </View>
@@ -255,10 +410,29 @@ export default function ChatConversationScreen() {
         />
       )}
 
-      {/* ── Input ── */}
-      <View style={[st.inputBar, { backgroundColor: C.bgCard, borderTopColor: C.border, paddingBottom: insets.bottom + 8 }]}>
-        <TouchableOpacity style={[st.attachBtn, { backgroundColor: C.bgSurface }]}>
-          <MaterialIcons name="attach-file" size={20} color={C.textSecondary} />
+      {/* ── Input Bar ── */}
+      <View style={[
+        st.inputBar,
+        { backgroundColor: C.bgCard, borderTopColor: C.border, paddingBottom: insets.bottom + 8 },
+      ]}>
+        {/* Attach (gallery) */}
+        <TouchableOpacity
+          style={[st.mediaBtn, { backgroundColor: C.bgSurface }]}
+          onPress={handlePickImage}
+          disabled={uploadingImage}
+        >
+          {uploadingImage
+            ? <ActivityIndicator size={16} color={C.primary} />
+            : <MaterialIcons name="photo-library" size={19} color={C.textSecondary} />}
+        </TouchableOpacity>
+
+        {/* Camera */}
+        <TouchableOpacity
+          style={[st.mediaBtn, { backgroundColor: C.bgSurface }]}
+          onPress={handleCamera}
+          disabled={uploadingImage}
+        >
+          <MaterialIcons name="camera-alt" size={19} color={C.textSecondary} />
         </TouchableOpacity>
 
         <TextInput
@@ -282,15 +456,9 @@ export default function ChatConversationScreen() {
           disabled={!inputText.trim() || sending}
           activeOpacity={0.8}
         >
-          {sending ? (
-            <ActivityIndicator size={18} color="#fff" />
-          ) : (
-            <MaterialIcons
-              name="send"
-              size={18}
-              color={inputText.trim() ? '#fff' : C.textMuted}
-            />
-          )}
+          {sending
+            ? <ActivityIndicator size={18} color="#fff" />
+            : <MaterialIcons name="send" size={18} color={inputText.trim() ? '#fff' : C.textMuted} />}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -308,7 +476,7 @@ const st = StyleSheet.create({
   backBtn: { padding: 4, marginRight: 2 },
   headerAvatar: {
     width: 40, height: 40, borderRadius: 20,
-    alignItems: 'center', justifyContent: 'center', position: 'relative',
+    alignItems: 'center', justifyContent: 'center',
   },
   headerAvatarTxt: { fontSize: Typography.base, fontWeight: '700' },
   onlineDot: {
@@ -350,16 +518,38 @@ const st = StyleSheet.create({
     maxWidth: '100%',
   },
   bubbleTxt: { fontSize: Typography.sm, lineHeight: 20 },
-  bubbleMeta: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2, alignSelf: 'flex-end' },
+  bubbleMeta: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    marginTop: 2, alignSelf: 'flex-end',
+  },
   bubbleTime: { fontSize: 9 },
 
+  // Image bubble
+  imgBubble: {
+    borderRadius: 18, overflow: 'hidden',
+    maxWidth: IMG_BUBBLE_W,
+  },
+  imgContent: {
+    width: IMG_BUBBLE_W,
+    height: IMG_BUBBLE_W * 0.75,
+  },
+  imgPlaceholder: {
+    width: IMG_BUBBLE_W,
+    height: IMG_BUBBLE_W * 0.75,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  imgMeta: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 8, paddingVertical: 5,
+  },
+
   inputBar: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 8,
+    flexDirection: 'row', alignItems: 'flex-end', gap: 6,
     paddingHorizontal: Spacing.base, paddingTop: 10,
     borderTopWidth: 1,
   },
-  attachBtn: {
-    width: 38, height: 38, borderRadius: 19,
+  mediaBtn: {
+    width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
   },
   input: {
