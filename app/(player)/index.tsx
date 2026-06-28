@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, memo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -29,6 +29,8 @@ export default function PlayerDashboard() {
   const levelColor = LEVEL_COLORS[currentPlayer.level];
   const xpPct = Math.min(100, (currentPlayer.xp / currentPlayer.nextLevelXp) * 100);
 
+  const handleNav = useCallback((route: any) => router.push(route), [router]);
+
   const CATEGORY_ICON: Record<string, any> = {
     attendance: 'event-available',
     performance: 'sports-cricket',
@@ -51,10 +53,10 @@ export default function PlayerDashboard() {
           </View>
           <View style={styles.headerRight}>
             {myNotifs.length > 0 && (
-              <View style={[styles.notifChip, { backgroundColor: C.bgSurface, borderColor: C.border }]}>
-                <MaterialIcons name="notifications-none" size={15} color={C.textSecondary} />
-                <Text style={[styles.notifCount, { color: C.textSecondary }]}>{myNotifs.length}</Text>
-              </View>
+              <TouchableOpacity style={[styles.notifChip, { backgroundColor: C.bgSurface, borderColor: C.border }]} onPress={() => handleNav('/notifications')}>
+                <MaterialIcons name="notifications" size={15} color={C.primary} />
+                <Text style={[styles.notifCount, { color: C.primary }]}>{myNotifs.length}</Text>
+              </TouchableOpacity>
             )}
             <TouchableOpacity style={[styles.logoutBtn, { backgroundColor: C.bgSurface }]} onPress={logout}>
               <MaterialIcons name="logout" size={16} color={C.textMuted} />

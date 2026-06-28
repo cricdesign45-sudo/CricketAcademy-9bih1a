@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated,
 } from 'react-native';
@@ -51,6 +51,7 @@ export default function AdminDashboard() {
   const chartColor = activeChart === 'attendance' ? C.success : activeChart === 'performance' ? C.info : C.gold;
   const fmtVal = (val: number) => activeChart === 'attendance' ? `${val}%` : val >= 1000 ? `${(val / 1000).toFixed(1)}K` : `${val}`;
 
+  const handleNav = useCallback((route: any) => router.push(route), [router]);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
@@ -66,7 +67,7 @@ export default function AdminDashboard() {
           <Text style={[styles.adminName, { color: C.textPrimary }]}>{user?.name ?? 'Admin'}</Text>
         </View>
         <View style={styles.headerBtns}>
-          <TouchableOpacity style={[styles.iconBtn, { backgroundColor: C.bgDark, borderColor: C.border, borderWidth: 1 }]} onPress={() => router.push('/notifications')}>
+          <TouchableOpacity style={[styles.iconBtn, { backgroundColor: C.bgDark, borderColor: C.border, borderWidth: 1 }]} onPress={() => handleNav('/notifications')}>
             <MaterialIcons name="notifications-none" size={19} color={C.textSecondary} />
             {unreadNotifs > 0 && (
               <View style={[styles.badge, { backgroundColor: C.error }]}>
